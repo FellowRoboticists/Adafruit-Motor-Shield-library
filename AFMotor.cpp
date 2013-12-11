@@ -2,19 +2,16 @@
 // copyright Adafruit Industries LLC, 2009
 // this code is public domain, enjoy!
 
+// added Leonardo support - Michael Margolis, 24 July 2012 
 
-#if (ARDUINO >= 100)
-  #include "Arduino.h"
+#include <avr/io.h>
+#if ARDUINO >= 100
+#include "Arduino.h"
 #else
-  #if defined(__AVR__)
-    #include <avr/io.h>
-  #endif
-  #include "WProgram.h"
+#include "WProgram.h"
 #endif
 
 #include "AFMotor.h"
-
-
 
 static uint8_t latch_state;
 
@@ -25,7 +22,6 @@ uint8_t microstepcurve[] = {0, 25, 50, 74, 98, 120, 141, 162, 180, 197, 212, 225
 #endif
 
 AFMotorController::AFMotorController(void) {
-    TimerInitalized = false;
 }
 
 void AFMotorController::enable(void) {
@@ -79,15 +75,17 @@ void AFMotorController::latch_tx(void) {
 
 static AFMotorController MC;
 
+
 /******************************************
                MOTORS
 ******************************************/
 inline void initPWM1(uint8_t freq) {
+
 #if defined(__AVR_ATmega8__) || \
     defined(__AVR_ATmega48__) || \
     defined(__AVR_ATmega88__) || \
     defined(__AVR_ATmega168__) || \
-    defined(__AVR_ATmega328P__)
+    defined(__AVR_ATmega328P__)	
     // use PWM from timer2A on PB3 (Arduino pin #11)
     TCCR2A |= _BV(COM2A1) | _BV(WGM20) | _BV(WGM21); // fast PWM, turn on oc2a
     TCCR2B = freq & 0x7;
@@ -97,47 +95,15 @@ inline void initPWM1(uint8_t freq) {
     TCCR1A |= _BV(COM1A1) | _BV(WGM10); // fast PWM, turn on oc1a
     TCCR1B = (freq & 0x7) | _BV(WGM12);
     OCR1A = 0;
-#elif defined(__PIC32MX__)
-    #if defined(PIC32_USE_PIN9_FOR_M1_PWM)
-        // Make sure that pin 11 is an input, since we have tied together 9 and 11
-        pinMode(9, OUTPUT);
-        pinMode(11, INPUT);
-        if (!MC.TimerInitalized)
-        {   // Set up Timer2 for 80MHz counting fro 0 to 256
-            T2CON = 0x8000 | ((freq & 0x07) << 4); // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=<freq>, T32=0, TCS=0; // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=0, T32=0, TCS=0
-            TMR2 = 0x0000;
-            PR2 = 0x0100;
-            MC.TimerInitalized = true;
-        }
-         // Setup OC4 (pin 9) in PWM mode, with Timer2 as timebase
-        OC4CON = 0x8006;    // OC32 = 0, OCTSEL=0, OCM=6
-        OC4RS = 0x0000;
-        OC4R = 0x0000;
-    #elif defined(PIC32_USE_PIN10_FOR_M1_PWM)
-        // Make sure that pin 11 is an input, since we have tied together 9 and 11
-        pinMode(10, OUTPUT);
-        pinMode(11, INPUT);
-        if (!MC.TimerInitalized)
-        {   // Set up Timer2 for 80MHz counting fro 0 to 256
-            T2CON = 0x8000 | ((freq & 0x07) << 4); // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=<freq>, T32=0, TCS=0; // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=0, T32=0, TCS=0
-            TMR2 = 0x0000;
-            PR2 = 0x0100;
-            MC.TimerInitalized = true;
-        }
-         // Setup OC5 (pin 10) in PWM mode, with Timer2 as timebase
-        OC5CON = 0x8006;    // OC32 = 0, OCTSEL=0, OCM=6
-        OC5RS = 0x0000;
-        OC5R = 0x0000;
-    #else
-        // If we are not using PWM for pin 11, then just do digital
-        digitalWrite(11, LOW);
-    #endif
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem 24 July 2012)
+    // use PWM on timer0A (Arduino pin #11 on leo)	
+	TCCR0A |= _BV(COM0A1) | _BV(WGM00) | _BV(WGM01); // fast PWM, turn on OC0A
+    OCR0A = 0;
+	
 #else
    #error "This chip is not supported!"
 #endif
-    #if !defined(PIC32_USE_PIN9_FOR_M1_PWM) && !defined(PIC32_USE_PIN10_FOR_M1_PWM)
-        pinMode(11, OUTPUT);
-    #endif
+    pinMode(11, OUTPUT);
 }
 
 inline void setPWM1(uint8_t s) {
@@ -151,24 +117,9 @@ inline void setPWM1(uint8_t s) {
 #elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
     // on arduino mega, pin 11 is now PB5 (OC1A)
     OCR1A = s;
-#elif defined(__PIC32MX__)
-    #if defined(PIC32_USE_PIN9_FOR_M1_PWM)
-        // Set the OC4 (pin 9) PMW duty cycle from 0 to 255
-        OC4RS = s;
-    #elif defined(PIC32_USE_PIN10_FOR_M1_PWM)
-        // Set the OC5 (pin 10) PMW duty cycle from 0 to 255
-        OC5RS = s;
-    #else
-        // If we are not doing PWM output for M1, then just use on/off
-        if (s > 127)
-        {
-            digitalWrite(11, HIGH);
-        }
-        else
-        {
-            digitalWrite(11, LOW);
-        }
-    #endif
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem 24 July 2012)
+    // use PWM on timer0A (Arduino pin #11 pn leo)
+	OCR0A = s;	
 #else
    #error "This chip is not supported!"
 #endif
@@ -189,18 +140,10 @@ inline void initPWM2(uint8_t freq) {
     TCCR3A |= _BV(COM1C1) | _BV(WGM10); // fast PWM, turn on oc3c
     TCCR3B = (freq & 0x7) | _BV(WGM12);
     OCR3C = 0;
-#elif defined(__PIC32MX__)
-    if (!MC.TimerInitalized)
-    {   // Set up Timer2 for 80MHz counting fro 0 to 256
-        T2CON = 0x8000 | ((freq & 0x07) << 4); // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=<freq>, T32=0, TCS=0; // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=0, T32=0, TCS=0
-        TMR2 = 0x0000;
-        PR2 = 0x0100;
-        MC.TimerInitalized = true;
-    }
-    // Setup OC1 (pin3) in PWM mode, with Timer2 as timebase
-    OC1CON = 0x8006;    // OC32 = 0, OCTSEL=0, OCM=6
-    OC1RS = 0x0000;
-    OC1R = 0x0000;
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem 24 July 2012)
+    // use PWM from timer0B (pin 3 on leo)  
+    TCCR0A |= _BV(COM0B1) | _BV(WGM00) | _BV(WGM01); // fast PWM, turn on OC0B
+    OCR0B = 0;
 #else
    #error "This chip is not supported!"
 #endif
@@ -214,14 +157,13 @@ inline void setPWM2(uint8_t s) {
     defined(__AVR_ATmega88__) || \
     defined(__AVR_ATmega168__) || \
     defined(__AVR_ATmega328P__)
-    // use PWM from timer2A on PB3 (Arduino pin #11)
+    // use PWM from timer2B (pin 3)
     OCR2B = s;
-#elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-    // on arduino mega, pin 11 is now PB5 (OC1A)
+#elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)    
     OCR3C = s;
-#elif defined(__PIC32MX__)
-    // Set the OC1 (pin3) PMW duty cycle from 0 to 255
-    OC1RS = s;
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem 24 July 2012)
+    // use PWM from timer0B (pin 3 pin Leo)  
+	OCR0B = s;
 #else
    #error "This chip is not supported!"
 #endif
@@ -231,7 +173,7 @@ inline void initPWM3(uint8_t freq) {
 #if defined(__AVR_ATmega8__) || \
     defined(__AVR_ATmega48__) || \
     defined(__AVR_ATmega88__) || \
-    defined(__AVR_ATmega168__) || \
+    defined(__AVR_ATmega168__) || \	
     defined(__AVR_ATmega328P__)
     // use PWM from timer0A / PD6 (pin 6)
     TCCR0A |= _BV(COM0A1) | _BV(WGM00) | _BV(WGM01); // fast PWM, turn on OC0A
@@ -243,18 +185,12 @@ inline void initPWM3(uint8_t freq) {
     TCCR4B = (freq & 0x7) | _BV(WGM12);
     //TCCR4B = 1 | _BV(WGM12);
     OCR4A = 0;
-#elif defined(__PIC32MX__)
-    if (!MC.TimerInitalized)
-    {   // Set up Timer2 for 80MHz counting fro 0 to 256
-        T2CON = 0x8000 | ((freq & 0x07) << 4); // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=<freq>, T32=0, TCS=0; // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=0, T32=0, TCS=0
-        TMR2 = 0x0000;
-        PR2 = 0x0100;
-        MC.TimerInitalized = true;
-    }
-    // Setup OC3 (pin 6) in PWM mode, with Timer2 as timebase
-    OC3CON = 0x8006;    // OC32 = 0, OCTSEL=0, OCM=6
-    OC3RS = 0x0000;
-    OC3R = 0x0000;
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem 24 July 2012)
+    // use PWM from timer4D (leo pin 6) 	
+	TCCR4B = _BV(CS42) | _BV(CS41) ; //|  _BV(CS40);
+	TCCR4C = _BV(PWM4D) |_BV(COM4D1);
+    TCCR4D = _BV(WGM40);
+	
 #else
    #error "This chip is not supported!"
 #endif
@@ -272,9 +208,9 @@ inline void setPWM3(uint8_t s) {
 #elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
     // on arduino mega, pin 6 is now PH3 (OC4A)
     OCR4A = s;
-#elif defined(__PIC32MX__)
-    // Set the OC3 (pin 6) PMW duty cycle from 0 to 255
-    OC3RS = s;
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem 24 July 2012)
+    // use PWM from timer4D (leo pin 6)
+	OCR4D = s;
 #else
    #error "This chip is not supported!"
 #endif
@@ -294,22 +230,17 @@ inline void initPWM4(uint8_t freq) {
     OCR0B = 0;
 #elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
     // on arduino mega, pin 5 is now PE3 (OC3A)
-    TCCR3A |= _BV(COM1A1) | _BV(WGM10); // fast PWM, turn on oc3a
+    TCCR3A = _BV(COM1A1) ; // turn on oc3a
     TCCR3B = (freq & 0x7) | _BV(WGM12);
     //TCCR4B = 1 | _BV(WGM12);
     OCR3A = 0;
-#elif defined(__PIC32MX__)
-    if (!MC.TimerInitalized)
-    {   // Set up Timer2 for 80MHz counting fro 0 to 256
-        T2CON = 0x8000 | ((freq & 0x07) << 4); // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=<freq>, T32=0, TCS=0; // ON=1, FRZ=0, SIDL=0, TGATE=0, TCKPS=0, T32=0, TCS=0
-        TMR2 = 0x0000;
-        PR2 = 0x0100;
-        MC.TimerInitalized = true;
-    }
-    // Setup OC2 (pin 5) in PWM mode, with Timer2 as timebase
-    OC2CON = 0x8006;    // OC32 = 0, OCTSEL=0, OCM=6
-    OC2RS = 0x0000;
-    OC2R = 0x0000;
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem  8 aug 2012)
+    // use PWM from timer3A (leo pin 5)	
+	TCCR3B = 0;
+	TCCR3B |=  _BV(CS31) | _BV(CS30);	
+    TCCR3A = 0;
+    TCCR3A |= _BV(COM3A1) | _BV(WGM30); //turn on oc3a
+    OCR3A = 0;			
 #else
    #error "This chip is not supported!"
 #endif
@@ -327,9 +258,9 @@ inline void setPWM4(uint8_t s) {
 #elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
     // on arduino mega, pin 6 is now PH3 (OC4A)
     OCR3A = s;
-#elif defined(__PIC32MX__)
-    // Set the OC2 (pin 5) PMW duty cycle from 0 to 255
-    OC2RS = s;
+#elif defined(__AVR_ATmega32U4__) // Leonardo (mem 24 July 2012)
+    // use PWM from timer3A (leo pin 5)
+	OCR3A = s;
 #else
    #error "This chip is not supported!"
 #endif
@@ -392,7 +323,7 @@ void AF_DCMotor::run(uint8_t cmd) {
     MC.latch_tx();
     break;
   case RELEASE:
-    latch_state &= ~_BV(a);     // A and B both low
+    latch_state &= ~_BV(a);
     latch_state &= ~_BV(b); 
     MC.latch_tx();
     break;
@@ -435,8 +366,8 @@ AF_Stepper::AF_Stepper(uint16_t steps, uint8_t num) {
     digitalWrite(3, HIGH);
 
     // use PWM for microstepping support
-    initPWM1(STEPPER1_PWM_RATE);
-    initPWM2(STEPPER1_PWM_RATE);
+    initPWM1(MOTOR12_64KHZ);
+    initPWM2(MOTOR12_64KHZ);
     setPWM1(255);
     setPWM2(255);
 
@@ -453,8 +384,8 @@ AF_Stepper::AF_Stepper(uint16_t steps, uint8_t num) {
 
     // use PWM for microstepping support
     // use PWM for microstepping support
-    initPWM3(STEPPER2_PWM_RATE);
-    initPWM4(STEPPER2_PWM_RATE);
+    initPWM3(1);
+    initPWM4(1);
     setPWM3(255);
     setPWM4(255);
   }
